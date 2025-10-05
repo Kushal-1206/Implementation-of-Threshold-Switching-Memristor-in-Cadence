@@ -1,0 +1,67 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+module vvteam_memristor(p, n);
+    inout p, n;
+    electrical p, n;
+
+    parameter real kpos  = 1e4;     // Filament growth rate
+    parameter real apos  = 2;       // Growth exponent
+    parameter real tau   = 1e-3;    // Retraction time constant
+    parameter real beta  = 2;       // Retraction exponent
+    parameter real D     = 1;       // Normalized device length
+    parameter real vth   = 0.8;     // Threshold voltage
+    parameter real vhold = 0.2;     // Hold voltage
+    parameter real Ron   = 100;     // Low resistance state
+    parameter real Roff  = 1e5;     // High resistance state
+    parameter real ic    = 5e-3;    // Compliance current
+    parameter real IniState = 0.05; // Initial state (w/D)
+
+    real v, i;
+    real x;      // State variable (filament fraction, 0..1)
+    real dxdt;   // Derivative of x
+    real R;      // Instantaneous resistance
+
+    analog begin
+        v = V(p,n);  // Applied voltage
+
+        if (abs(v) > vth) begin
+            dxdt = kpos * pow(abs(v) - vth, apos) * (1.0 - x/D);
+        end else if (abs(v) < vhold) begin
+            dxdt = -(pow(x/tau, beta));
+        end else begin
+            dxdt = 0;
+        end
+
+        x <+ idt(dxdt, IniState);
+
+        if (x < 0) x = 0;
+        if (x > D) x = D;
+
+        R = Ron * (x/D) + Roff * (1 - x/D);
+
+        i = v / R;
+
+        if (i > ic) i = ic;
+        if (i < -ic) i = -ic;
+
+        I(p,n) <+ i;
+    end
+endmodule
+
+
+// ================================================================
+// TESTBENCH: Apply 1.5 V sine @ 1kHz for 5 ms
+// ================================================================
+`include "disciplines.vams"
+module testbench;
+    electrical p, n;
+
+    // Instantiate memristor
+    vvteam_memristor mem(p, n);
+
+    // Sine wave source
+    analog begin
+        V(p, n) <+ 1.5 * sin(2*`M_PI*1e3*$abstime);
+    end
+endmodule
